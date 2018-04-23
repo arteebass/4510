@@ -193,9 +193,7 @@ void* parse(void* threads) {
 			close(sock);
 		}
 	}
-<<<<<<< HEAD
 	pthread_exit(EXIT_SUCESS);
-=======
 	return 0;
 }
 
