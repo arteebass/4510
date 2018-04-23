@@ -1,28 +1,15 @@
 #include "proxy.h"
 
-// Receive a message to a given socket file descriptor
-void receiveMsg(int s, int size, char *ptr, bool headerOnly) {
+void receive(int s, int size, char *ptr, bool headerOnly) {
 	int received = 0;
-	// First time we enter the ptr points to start of buffer
 	char* buf = ptr;
-	// Subtract 1 to avoid completely filling buffer
-	// Leave space for '\0'
 	while ((size > 0) && (received = read(s, ptr, size - 1))) {
-		// Check error
 		if (received < 0 && !done) {
 			break;
-			//error("Read failed"); //
 		}
-
-		// Move pointer forward in struct by size of received data
 		ptr += received;
-
-		// Keep track of how much data has been received
 		size -= received;
-
-		// Read only header
 		if (headerOnly) {
-			// Exit loop if CRLF CRLF has been received
 			if (strstr(buf, CRLF CRLF)) {
 				break;
 			}
@@ -30,67 +17,76 @@ void receiveMsg(int s, int size, char *ptr, bool headerOnly) {
 	}
 }
 
-void sendMsg(int s, int size, char *ptr) {
+void send(int s, int size, char *ptr) {
 	int sent = 0;
 	while ((size > 0) && (sent = write(s, ptr, size))) {
 		if (sent < 0) {
 			break;
 		}
-		// Move pointer forward in struct by size of sent data
 		ptr += sent;
-		// Keep track of how much data has been sent
 		size -= sent;
 	}
 }
 
-void cleanOnError(int sock, char* &buffer) {
+void closeSocket(int sock, char* &Buffer) {
 	if (sock > -1) {
 		shutdown(sock, SHUT_RDWR);
 		close(sock);
 	}
-	delete[] buffer;
+	delete[] Buffer;
 }
 
-void consume(int clientSocket) {
+void* parse(void* threads) {
 	while (!done) {
-		int sock = clientSocket;
+		int sock = -1;
+		
+		pthread_mutex_lock(count_mutex);
+		if (!socketQ->empty()) {
+			sock = socketQ->front();
+			socketQ->pop();
+		}
+		pthread_mutex_unlock(count_mutex);
+		
 		if (!done && sock >= 0) {
-			char* buffer = new char[MAX_MSG_SIZE];
-			memset(buffer, '\0', MAX_MSG_SIZE);
-			receiveMsg(sock, MAX_MSG_SIZE, buffer, true);
+			char* Buffer = new char[MSG_BUF_SIZE];
+			memset(Buffer, '\0', MSG_BUF_SIZE);
+			receive(sock, MSG_BUF_SIZE, Buffer, true);
 			
+			//Header info
 			char* savePtr;
-			char* recvCMD;
-			char* recvHost;
-			char* recvVer;
+			char* parsedCMD;
+			char* parsedHost;
+			char* parsedHttp;
 			char* parsedHeaders;
-			recvCMD = strtok_r(buffer, " ", &savePtr);
-			recvHost = strtok_r(NULL, " ", &savePtr);
-			recvVer = strtok_r(NULL, CRLF, &savePtr);
+
+			parsedCMD = strtok_r(Buffer, " ", &savePtr);
+			parsedHost = strtok_r(NULL, " ", &savePtr);
+			parsedHttp = strtok_r(NULL, CRLF, &savePtr);
 			parsedHeaders = strtok_r(NULL, CRLF, &savePtr);
 
-			// Check
-			if (!recvCMD || (strcmp(recvCMD, "GET") != 0) || !recvHost
-					|| !recvVer) {
-				sendMsg(sock, strlen(errMsg), (char*) errMsg);
-				cleanOnError(sock, buffer);
+			// Verify headers
+			if (!parsedCMD || (strcmp(parsedCMD, "GET") != 0) || !parsedHost
+					|| !parsedHttp) {
+				send(sock, strlen(errorMessage), (char*) errorMessage);
+				closeSocket(sock, Buffer);
 				continue;
 			}
-			if (strcmp(recvVer, "HTTP/1.1") == 0 || strcmp(recvVer, "HTTPS/1.1") == 0 || strcmp(recvVer, "HTTPS/1.0") == 0) {
-				cout << errMsg << endl;
-				cleanOnError(sock, buffer);
+
+			//check HTTP version
+			if (strcmp(parsedHttp, "HTTP/1.0") != 0) {
+				cout << errorMessage << endl;
+				closeSocket(sock, Buffer);
 				exit(-1);
 			}
-
 			
 			string::size_type index;
 			map<string, string> headerMap;
 			while (parsedHeaders != NULL) {
+				//split by :
 				index = string(parsedHeaders).find(':', 0);
 				if (index != string::npos) {
 					pair<string, string> tempPair;
 					string key = string(parsedHeaders).substr(0, index + 1);
-					transform(key.begin(), key.end(), key.begin(), ::tolower);
 					string value = string(parsedHeaders).substr(index + 1);
 					tempPair = make_pair(key, value);
 					headerMap.insert(tempPair);
@@ -106,37 +102,38 @@ void consume(int clientSocket) {
 				tempPair = make_pair("connection:", " close");
 				headerMap.insert(tempPair);
 			}
-			
-			string recvHostStr = string(recvHost);
+
+			// Remove http://
+			string parsedHostStr = string(parsedHost);
 			string http = "http://";
-			index = recvHostStr.find(http);
+			index = parsedHostStr.find(http);
 			if (index != string::npos) {
-				recvHostStr.erase(index, http.length());
+				parsedHostStr.erase(index, http.length());
 			}
 
-			string parsedRelPath;
-			index = recvHostStr.find('/');
+			string relPath;
+			index = parsedHostStr.find('/');
 			if (index != string::npos) {
-				parsedRelPath = recvHostStr.substr(index);
-				recvHostStr.erase(index, parsedRelPath.length());
+				relPath = parsedHostStr.substr(index);
+				parsedHostStr.erase(index, relPath.length());
 			}
 			
 			string beginning = "http://www.";
-			if(string(recvHost).find(beginning) == string::npos){
-				cout << errMsg << endl;
+			if(string(parsedHost).find(beginning) == string::npos){
+				cout << errorMessage << endl;
 				exit(-1);
 			}
 
 			string parsedPort;
-			index = recvHostStr.find(':');
+			index = parsedHostStr.find(':');
 			if (index != string::npos) {
-				parsedPort = recvHostStr.substr(index + 1);
+				parsedPort = parsedHostStr.substr(index + 1);
 			} else {
 				parsedPort = "80";
 			}
 
 			stringstream ss;
-			ss << recvCMD << " " << parsedRelPath << " " << recvVer << CRLF;
+			ss << parsedCMD << " " << relPath << " " << parsedHttp << CRLF;
 
 			for (it = headerMap.begin(); it != headerMap.end(); ++it) {
 				ss << it->first << it->second << CRLF;
@@ -144,72 +141,98 @@ void consume(int clientSocket) {
 
 			it = headerMap.find("host:");
 			if (it == headerMap.end()) {
-				ss << "Host: " << recvHostStr << CRLF;
+				ss << "Host: " << parsedHostStr << CRLF;
 			}
 
 			ss << CRLF;
 			string fullRequest = ss.str();
+
 			ss.str(string());
 			ss.clear();
-
+			
 			struct sockaddr_in sa;
 			bzero((char*) &sa, sizeof(sa));
 
-			struct hostent *host = gethostbyname(recvHostStr.c_str());
+			struct hostent *host = gethostbyname(parsedHostStr.c_str());
 			if (!host) {
-				cleanOnError(sock, buffer);
+				closeSocket(sock, Buffer);
 				continue;
 			}
 
 			memcpy(&sa.sin_addr.s_addr, host->h_addr_list[0], host->h_length);
-
 			int port = atoi(parsedPort.c_str());
 			sa.sin_family = AF_INET;
 			sa.sin_port = htons(port);
 
 			int web_s;
 			if ((web_s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-				cleanOnError(sock, buffer);
+				closeSocket(sock, Buffer);
 				continue;
 			}
 
 			if (connect(web_s, (struct sockaddr*) &sa, sizeof(sa)) < 0) {
-				cleanOnError(sock, buffer);
+				closeSocket(sock, Buffer);
 				continue;
 			}
 
 			char* req = new char[fullRequest.length() + 1];
 			memset(req, '\0', fullRequest.length() + 1);
 			strcpy(req, fullRequest.c_str());
-
-			sendMsg(web_s, strlen(req), req);
+			send(web_s, strlen(req), req);
 			delete[] req;
-
-			char* resBuffer = new char[MAX_MSG_SIZE];
-			memset(resBuffer, '\0', MAX_MSG_SIZE);
-			receiveMsg(web_s, MAX_MSG_SIZE, resBuffer, false);
+			char* responseBuf = new char[MSG_BUF_SIZE];
+			memset(responseBuf, '\0', MSG_BUF_SIZE);
+			receive(web_s, MSG_BUF_SIZE, responseBuf, false);
 
 			shutdown(web_s, SHUT_RDWR);
 			close(web_s);
-
-			sendMsg(sock, MAX_MSG_SIZE, resBuffer);
-
-			delete[] buffer;
-			delete[] resBuffer;
+			send(sock, MSG_BUF_SIZE, responseBuf);
+			delete[] Buffer;
+			delete[] responseBuf;
 			shutdown(sock, SHUT_RDWR);
 			close(sock);
 		}
 	}
 }
 
-int main(int argc, char *argv[]) {
-	if (argc < 2) {
-		error("usage: ./MyProxy <port>\n");
+void initSynchronization() {
+	count_mutex = new pthread_mutex_t;
+	if (pthread_mutex_init(count_mutex, NULL) != 0) {
+		error("Mutex init failed");
 	}
 
+	// Alternative to sem_init (deprecated on OSX)
+	// Clear semaphore first
+//	sem_unlink(SEM_NAME);
+//	job_queue_count = sem_open(SEM_NAME, O_CREAT, SEM_PERMISSIONS, 0);
+	// For running on cs2 to avoid permission errors
+	job_queue_count = new sem_t;
+	sem_init(job_queue_count, 0, 0);
+	if (job_queue_count == SEM_FAILED) {
+		//sem_unlink(SEM_NAME);
+		error("Unable to create semaphore");
+	}
+}
+
+void initThreadPool() {
+	// Thread pool
+	pool = new pthread_t[MAX_THREADS];
+
+	// Start consumer threads
+	for (int i = 0; i < MAX_THREADS; i++) {
+		if (pthread_create(&pool[i], NULL, parse, &pool[i]) < 0) {
+			error("Could not create consumer thread");
+		}
+	}
+}
+
+int main(int argc, char *argv[]) {
+	if (argc < 2) {
+		error("usage: ./proxy <port>\n");
+	}
 	struct sockaddr_in server;
 	memset(&server, 0, sizeof(server));
-	
+
 	int port = atoi(argv[1]);
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
@@ -223,26 +246,43 @@ int main(int argc, char *argv[]) {
 		error("Failed to bind");
 	}
 
-	cout << "Listening:" << port << "..." << endl;
+	cout << "Listening on port " << port << "..." << endl;
 	if (listen(server_s, SOMAXCONN) < 0) {
 		error("Failed to listen");
 	}
+	
 	struct sockaddr_in client;
+	socketQ = new std::queue<int>();
 	memset(&client, 0, sizeof(client));
 	socklen_t csize = sizeof(client);
-	
 	while (!done) {
-		// Accept client connections
 		int client_s = accept(server_s, (struct sockaddr*) &client, &csize);
-
-		// Prevent error from showing if program is exiting
-		// Not a reason to terminate proxy
 		if (client_s < 0 && !done) {
 			shutdown(client_s, SHUT_RDWR);
 			close(client_s);
 			continue;
 		}
-		consume(client_s);
+		pthread_mutex_lock(count_mutex);
+		socketQ->push(client_s);
+		pthread_mutex_unlock(count_mutex);
+		sem_post(job_queue_count);
 	}
+	//clean-up
+	
+	//finish all jobs
+	for (int i = 0; i < MAX_THREADS; i++) {
+		pthread_join(pool[i], NULL);
+	}
+	pthread_mutex_destroy(count_mutex);
+	if (sem_destroy(job_queue_count) < 0) {
+		error("Destroy semaphore failed");
+	}
+	//empty queue then deallocate
+	while (!socketQ->empty()) {
+		socketQ->pop();
+	}
+	delete socketQ;
+	delete[] pool;
 	return 0;
 }
+
