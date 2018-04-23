@@ -40,6 +40,7 @@ void* parse(void* threads) {
 	while (!done) {
 		int sock = -1;
 		
+		sem_wait(job_queue_count);
 		pthread_mutex_lock(count_mutex);
 		if (!socketQ->empty()) {
 			sock = socketQ->front();
@@ -193,7 +194,7 @@ void* parse(void* threads) {
 			close(sock);
 		}
 	}
-	pthread_exit(EXIT_SUCESS);
+	pthread_exit(EXIT_SUCCESS);
 	return 0;
 }
 
@@ -203,15 +204,9 @@ void initSynchronization() {
 		error("Mutex init failed");
 	}
 
-	// Alternative to sem_init (deprecated on OSX)
-	// Clear semaphore first
-//	sem_unlink(SEM_NAME);
-//	job_queue_count = sem_open(SEM_NAME, O_CREAT, SEM_PERMISSIONS, 0);
-	// For running on cs2 to avoid permission errors
 	job_queue_count = new sem_t;
 	sem_init(job_queue_count, 0, 0);
 	if (job_queue_count == SEM_FAILED) {
-		//sem_unlink(SEM_NAME);
 		error("Unable to create semaphore");
 	}
 }
