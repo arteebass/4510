@@ -4,62 +4,48 @@ using namespace std;
 
 #include <algorithm>
 #include <stdio.h>
+#include <stdlib.h>
+#include <cstdlib>
 #include <unistd.h>
 #include <string.h>
 #include <string>
 #include <sstream>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <iostream>
 #include <queue>
+#include <semaphore.h>
 #include <arpa/inet.h>
 #include <map>
-#include <semaphore.h>
-#include <pthread.h>
 
-#define MAX_THREADS		30
 #define CRLF "\r\n"
-// Permissions are READ/WRITE for OWNER and READ for others
-// Only for use on systems where sem_init/sem_destroy are deprecated (OSX)
+#define MSG_BUF_SIZE	1000000
+#define MAX_THREADS		30
 #define SEM_PERMISSIONS	0644
 
-// Send/receive message buf size
-#define MAX_MSG_SIZE	1000000
-
-// Set to 0 to disable debug messages
-#define DEBUG			0
-
-// Multithreading and thread safety
+int server_s;
+const char* errorMessage = "HTTP/1.0 500 'Internal Server Error'\r\n\r\n";
+static bool done = 0;
+std::queue<int>* socketQ;
+pthread_t* pool;
 pthread_mutex_t* count_mutex;
 sem_t* job_queue_count;
 char SEM_NAME[] = "sem";
-int server_s;
-std::queue<int>* socketQ;
-pthread_t* pool;
 
-// Error message for client
-const char* errMsg = "HTTP/1.0 500 'Internal Server Error'\r\n\r\n";
-
-// Controls termination of program
-static bool done = 0;
-
-// Custom error handling
 void error(const char *err) {
 	perror(err);
 	exit(EXIT_FAILURE);
 }
 
-
-
-void termination_handler(int signum); // new
 void receiveMsg(int s, int size, char *ptr, bool headerOnly);
 void sendMsg(int s, int size, char *ptr);
-void cleanOnError(int sock, char* &dataBuf);
-void* consume(void* data);
-void cleanup(); // new
-void setupSigHandlers(); // new
-void initSynchronization(); // new
-void initThreadPool(); // new
-
-#endif /* PROXY_H_ */
+void closeSocket(int sock, char* &Buffer);
+void* parse(void* threads);
+void initSynchronization();
+void initThreadPool();
+#endif
