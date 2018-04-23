@@ -193,6 +193,8 @@ void* parse(void* threads) {
 			close(sock);
 		}
 	}
+	pthread_exit(EXIT_SUCCESS);
+	return 0;
 }
 
 void initSynchronization() {
