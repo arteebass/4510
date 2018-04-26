@@ -227,6 +227,14 @@ int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		error("usage: ./proxy <port>\n");
 	}
+	
+	// Setup thread synchronization
+	initSynchronization();
+
+	// Start the thread pool
+	initThreadPool();
+	
+	
 	struct sockaddr_in server;
 	memset(&server, 0, sizeof(server));
 
