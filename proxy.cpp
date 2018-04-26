@@ -1,3 +1,10 @@
+/*
+ *          Filename: proxy.cpp
+ *  Last Modified on: Apr 11, 2016
+ *        Developers: Rueben Tiow, Hunter Garrett
+ *       Description: Prototype for simple proxy server
+ */
+
 #include "proxy.h"
 
 void receive(int s, int size, char *ptr, bool headerOnly) {
@@ -181,6 +188,7 @@ void* parse(void* threads) {
 			strcpy(req, fullRequest.c_str());
 			send(web_s, strlen(req), req);
 			delete[] req;
+			
 			char* responseBuf = new char[MSG_BUF_SIZE];
 			memset(responseBuf, '\0', MSG_BUF_SIZE);
 			receive(web_s, MSG_BUF_SIZE, responseBuf, false);
@@ -188,6 +196,8 @@ void* parse(void* threads) {
 			shutdown(web_s, SHUT_RDWR);
 			close(web_s);
 			send(sock, MSG_BUF_SIZE, responseBuf);
+			
+			
 			delete[] Buffer;
 			delete[] responseBuf;
 			shutdown(sock, SHUT_RDWR);
