@@ -2,11 +2,11 @@
  *          Filename: proxy.cpp
  *  Last Modified on: Apr 26, 2016
  *        Developers: Rueben Tiow, Hunter Garrett
- *       Description: Prototype for simple proxy server
+ *       Description: A simple HTTP web proxy
  */
-
 #include "proxy.h"
 
+//Handles CTRL-C signals
 void termination_handler(int signum) {
 	std::cout << std::endl << "Terminating proxy..." << std::endl;
 	fflush(stdout);
@@ -31,6 +31,7 @@ void setupSigHandlers() {
 	sigaction(SIGPIPE, &act, NULL);
 }
 
+//Receive a message to a given socket file descriptor
 void receive(int s, int size, char *ptr, bool headerOnly) {
 	int received = 0;
 	char* buf = ptr;
@@ -48,6 +49,7 @@ void receive(int s, int size, char *ptr, bool headerOnly) {
 	}
 }
 
+// Send a message to a given socket file descriptor
 void send(int s, int size, char *ptr) {
 	int sent = 0;
 	while ((size > 0) && (sent = write(s, ptr, size))) {
@@ -256,10 +258,11 @@ void initThreadPool() {
 }
 
 int main(int argc, char *argv[]) {
+	//Check number of arguments
 	if (argc < 2) {
 		error("usage: ./proxy <port>\n");
 	}
-	
+	// Catch CTRL-C and SIGPIPE
 	setupSigHandlers();
 	
 	// Setup thread synchronization
@@ -268,33 +271,34 @@ int main(int argc, char *argv[]) {
 	// Start the thread pool
 	initThreadPool();
 	
-	
+	//Socket information/properties
 	struct sockaddr_in server;
 	memset(&server, 0, sizeof(server));
-
 	int port = atoi(argv[1]);
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
 	server.sin_port = htons(port);
-
+	
+	//Create Socket
 	if ((server_s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		error("Failed to open socket");
 	}
-
+	//Bind Socket
 	if (bind(server_s, (struct sockaddr*) &server, sizeof(server)) < 0) {
 		error("Failed to bind");
 	}
-
+	//Awaiting connections
 	cout << "Listening on port " << port << "..." << endl;
 	if (listen(server_s, SOMAXCONN) < 0) {
 		error("Failed to listen");
 	}
-	
+	//Queue for client connections
 	struct sockaddr_in client;
 	socketQ = new std::queue<int>();
 	memset(&client, 0, sizeof(client));
 	socklen_t csize = sizeof(client);
 	while (!done) {
+		//Accept Socket
 		int client_s = accept(server_s, (struct sockaddr*) &client, &csize);
 		if (client_s < 0 && !done) {
 			shutdown(client_s, SHUT_RDWR);
@@ -306,9 +310,8 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(count_mutex);
 		sem_post(job_queue_count);
 	}
-	//clean-up
 	
-	//finish all jobs
+	//Deallocate & Cleanup before exit
 	for (int i = 0; i < MAX_THREADS; i++) {
 		pthread_join(pool[i], NULL);
 	}
