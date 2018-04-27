@@ -1,11 +1,35 @@
 /*
  *          Filename: proxy.cpp
- *  Last Modified on: Apr 11, 2016
+ *  Last Modified on: Apr 26, 2016
  *        Developers: Rueben Tiow, Hunter Garrett
  *       Description: Prototype for simple proxy server
  */
 
 #include "proxy.h"
+
+void termination_handler(int signum) {
+	std::cout << std::endl << "Terminating proxy..." << std::endl;
+	fflush(stdout);
+	done = 1;
+	shutdown(server_s, SHUT_RDWR);
+	close(server_s);
+	// Fake job to wake up consumers one last time
+	for (int i = 0; i < MAX_THREADS; i++) {
+		sem_post(job_queue_count);
+	}
+}
+
+void setupSigHandlers() {
+	// Handle CTRL-C signals
+	signal(SIGINT, termination_handler);
+
+	// Handle SIGPIPE signals
+	struct sigaction act;
+	act.sa_handler = SIG_IGN;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	sigaction(SIGPIPE, &act, NULL);
+}
 
 void receive(int s, int size, char *ptr, bool headerOnly) {
 	int received = 0;
@@ -82,9 +106,9 @@ void* parse(void* threads) {
 
 			//check HTTP version
 			if (strcmp(parsedHttp, "HTTP/1.0") != 0) {
-				cout << errorMessage << endl;
+				cout << errorMessage << " ver error" << endl;
 				closeSocket(sock, Buffer);
-				exit(-1);
+				continue;
 			}
 			
 			string::size_type index;
@@ -128,8 +152,9 @@ void* parse(void* threads) {
 			
 			string beginning = "http://www.";
 			if(string(parsedHost).find(beginning) == string::npos){
-				cout << errorMessage << endl;
-				exit(-1);
+				cout << errorMessage << " Host error" << endl;
+				closeSocket(sock, Buffer);
+				continue;
 			}
 
 			string parsedPort;
@@ -188,7 +213,6 @@ void* parse(void* threads) {
 			strcpy(req, fullRequest.c_str());
 			send(web_s, strlen(req), req);
 			delete[] req;
-			
 			char* responseBuf = new char[MSG_BUF_SIZE];
 			memset(responseBuf, '\0', MSG_BUF_SIZE);
 			receive(web_s, MSG_BUF_SIZE, responseBuf, false);
@@ -196,8 +220,6 @@ void* parse(void* threads) {
 			shutdown(web_s, SHUT_RDWR);
 			close(web_s);
 			send(sock, MSG_BUF_SIZE, responseBuf);
-			
-			
 			delete[] Buffer;
 			delete[] responseBuf;
 			shutdown(sock, SHUT_RDWR);
@@ -237,6 +259,8 @@ int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		error("usage: ./proxy <port>\n");
 	}
+	
+	setupSigHandlers();
 	
 	// Setup thread synchronization
 	initSynchronization();
