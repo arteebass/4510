@@ -108,7 +108,7 @@ void* parse(void* threads) {
 
 			//check HTTP version
 			if (strcmp(parsedHttp, "HTTP/1.0") != 0) {
-				cout << errorMessage << " ver error" << endl;
+				cout << errorMessage << endl;
 				closeSocket(sock, Buffer);
 				continue;
 			}
@@ -154,7 +154,7 @@ void* parse(void* threads) {
 			
 			string beginning = "http://www.";
 			if(string(parsedHost).find(beginning) == string::npos){
-				cout << errorMessage << " Host error" << endl;
+				cout << errorMessage << endl;
 				closeSocket(sock, Buffer);
 				continue;
 			}
