@@ -152,12 +152,13 @@ void* parse(void* threads) {
 				parsedHostStr.erase(index, relPath.length());
 			}
 			
+			/*
 			string beginning = "http://www.";
 			if(string(parsedHost).find(beginning) == string::npos){
 				cout << errorMessage << endl;
 				closeSocket(sock, Buffer);
 				continue;
-			}
+			}*/
 
 			string parsedPort;
 			index = parsedHostStr.find(':');
