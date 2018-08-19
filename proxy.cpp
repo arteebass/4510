@@ -1,6 +1,6 @@
 /*
  *          Filename: proxy.cpp
- *  Last Modified on: Apr 26, 2016
+ *  Last Modified on: Apr 27, 2018
  *        Developers: Rueben Tiow, Hunter Garrett
  *       Description: A simple HTTP web proxy
  */
@@ -31,7 +31,7 @@ void setupSigHandlers() {
 	sigaction(SIGPIPE, &act, NULL);
 }
 
-//Receive a message to a given socket file descriptor
+//Receive a message 
 void receive(int s, int size, char *ptr, bool headerOnly) {
 	int received = 0;
 	char* buf = ptr;
@@ -49,7 +49,7 @@ void receive(int s, int size, char *ptr, bool headerOnly) {
 	}
 }
 
-// Send a message to a given socket file descriptor
+// Send a message 
 void send(int s, int size, char *ptr) {
 	int sent = 0;
 	while ((size > 0) && (sent = write(s, ptr, size))) {
