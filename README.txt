@@ -16,5 +16,5 @@ Usage:
 1. type "make" in command line to compile > press enter.
 2. type "./MyProxy <port#>" in command line to start the proxy server > press enter.
 3. type "telnet localhost <port#>" in command line to start telnet > press enter.
-4. type "GET http://www.aDNShere.com/ HTTP/1.0" > press enter > press enter.
+4. type "GET http://www.diggs.com/ HTTP/1.0" > press enter > press enter.
 5. restart step 3 to run concurrent requests.
